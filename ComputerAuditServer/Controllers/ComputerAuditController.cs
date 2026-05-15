@@ -22,6 +22,7 @@ namespace ComputerAuditServer.Controllers
             _logger = logger;
         }
 
+
         [HttpPost("audit")]
         public async Task<IActionResult> ReceiveAudit([FromBody] object auditData)
         {
@@ -30,16 +31,7 @@ namespace ComputerAuditServer.Controllers
                 _logger.LogInformation("Получены данные от компьютера");
 
                 string jsonString = auditData.ToString();
-
-                // Детальное логирование
                 _logger.LogInformation($"Размер JSON: {jsonString.Length} символов");
-
-                var pcReport = new PCReport
-                {
-                    RawData = jsonString,
-                    ReportedAt = DateTime.Now,
-                    ReportStatus = "received"
-                };
 
                 using (JsonDocument doc = JsonDocument.Parse(jsonString))
                 {
@@ -64,54 +56,45 @@ namespace ComputerAuditServer.Controllers
                         pc = new PC
                         {
                             ComputerName = computerName,
-                            LastSeen = DateTime.Now,
+                            LastSeen = DateTime.UtcNow,  // ← ИСПРАВЛЕНО: UtcNow вместо Now
                             Status = PCStatus.Active,
-                            InventoryNumber = Guid.NewGuid().ToString().Substring(0, 8)
+                            InventoryNumber = Guid.NewGuid().ToString().Substring(0, 8),
+                            UserId = null,
+                            OfficeId = null
                         };
                         _context.PCs.Add(pc);
-
-                        try
-                        {
-                            await _context.SaveChangesAsync();
-                            _logger.LogInformation($"Компьютер создан с ID: {pc.IdPc}");
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Ошибка при создании компьютера");
-                            throw;
-                        }
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation($"Компьютер создан с ID: {pc.IdPc}");
                     }
                     else
                     {
                         _logger.LogInformation($"Найден существующий компьютер ID: {pc.IdPc}");
-                        pc.LastSeen = DateTime.Now;
+                        pc.LastSeen = DateTime.UtcNow;  // ← ИСПРАВЛЕНО: UtcNow вместо Now
                     }
 
-                    pcReport.PcId = pc.IdPc;
+                    // Сохраняем отчет
+                    var pcReport = new PCReport
+                    {
+                        PcId = pc.IdPc,
+                        RawData = jsonString,
+                        ReportedAt = DateTime.UtcNow,  // ← ИСПРАВЛЕНО: UtcNow вместо Now
+                        ReportStatus = "received"
+                    };
+                    _context.PCReports.Add(pcReport);
 
                     // Обновляем информацию о ПК из отчета
-                    try
+                    await UpdatePCFromReport(pc, root);
+
+                    await _context.SaveChangesAsync();
+
+                    return Ok(new
                     {
-                        await UpdatePCFromReport(pc, root);
-                        await _context.SaveChangesAsync();
-                        _logger.LogInformation("Информация о ПК обновлена");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Ошибка при обновлении информации о ПК");
-                        throw;
-                    }
+                        Status = "success",
+                        Message = "Данные успешно сохранены",
+                        PcId = pc.IdPc,
+                        Note = "Поля UserId и OfficeId требуют ручного заполнения"
+                    });
                 }
-
-                _context.PCReports.Add(pcReport);
-                await _context.SaveChangesAsync();
-
-                return Ok(new
-                {
-                    Status = "success",
-                    Message = "Данные успешно сохранены",
-                    PcId = pcReport.PcId
-                });
             }
             catch (DbUpdateException ex)
             {
@@ -133,9 +116,6 @@ namespace ComputerAuditServer.Controllers
                 return StatusCode(500, new { Status = "error", Message = ex.Message });
             }
         }
-
-        // ДОБАВЬТЕ ЭТОТ МЕТОД - он обновляет информацию о ПК из отчета
-        // ДОБАВЬТЕ ЭТОТ МЕТОД - он обновляет информацию о ПК из отчета
         private async Task UpdatePCFromReport(PC pc, JsonElement reportData)
         {
             try

@@ -9,22 +9,21 @@ namespace ComputerAuditServer.Models
         [Key]
         [Column("id")]
         public int Id { get; set; }
-
+        
         [Column("pc_id")]
         public int PcId { get; set; }
-
+        
         [Column("raw_data")]
-        public string RawData { get; set; } // JSON string
-
+        public string RawData { get; set; } = "";
+        
         [Column("reported_at")]
         public DateTime ReportedAt { get; set; }
-
+        
         [Column("report_status")]
         [MaxLength(50)]
-        public string ReportStatus { get; set; }
-
-        // Foreign keys
+        public string ReportStatus { get; set; } = "";
+        
         [ForeignKey("PcId")]
-        public virtual PC PC { get; set; }
-    }
+        public virtual PC? PC { get; set; }
+    }    
 }
